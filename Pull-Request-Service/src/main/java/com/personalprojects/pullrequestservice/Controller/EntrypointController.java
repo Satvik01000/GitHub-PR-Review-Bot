@@ -1,5 +1,6 @@
 package com.personalprojects.pullrequestservice.Controller;
 
+import com.personalprojects.pullrequestservice.DTO.ProjectRepoRequestDTO;
 import com.personalprojects.pullrequestservice.Service.EntrypointService.EntrypointService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -11,19 +12,24 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api")
-public class Entrypoint {
+public class EntrypointController {
 
     private final EntrypointService entrypointService;
 
     @Autowired
-    public Entrypoint(EntrypointService entrypointService) {
+    public EntrypointController(EntrypointService entrypointService) {
         this.entrypointService = entrypointService;
+    }
+
+    @PostMapping("/repo")
+    public ResponseEntity<String> saveRepo(@RequestBody ProjectRepoRequestDTO projectRepoRequestDTO){
+        return ResponseEntity.ok(entrypointService.saveRepo(projectRepoRequestDTO.getProjectName(), projectRepoRequestDTO.getRepoUrl()));
     }
 
     @PostMapping("/webhook")
     public ResponseEntity<Void> onWebhook(
-            @RequestHeader(value = "X-GitHub-Event", required = false) String event,
-            @RequestHeader(value = "X-Hub-Signature-256", required = false) String signature,
+            @RequestHeader(value = "X-GitHub-Event", required = true) String event,
+            @RequestHeader(value = "X-Hub-Signature-256", required = true) String signature,
             @RequestBody String payload) {
         entrypointService.processWebhook(payload, event, signature);
         return ResponseEntity.ok().build();
