@@ -1,5 +1,6 @@
 package com.personalprojects.pullrequestservice.Service.EntrypointService;
 
+import com.personalprojects.pullrequestservice.Service.RedisCacheService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,9 +16,14 @@ public class EntrypointServiceImple implements EntrypointService {
 
     private static final Logger logger = LoggerFactory.getLogger(EntrypointServiceImple.class);
     private static final String HMAC_ALGORITHM = "HmacSHA256";
+    private final RedisCacheService redisCacheService;
 
     @Value("${WEBHOOK_SECRET}")
     private String webhookSecret;
+
+    public EntrypointServiceImple(RedisCacheService redisCacheService) {
+        this.redisCacheService = redisCacheService;
+    }
 
     @Override
     public void processWebhook(String payload, String event, String signature) {
@@ -28,6 +34,13 @@ public class EntrypointServiceImple implements EntrypointService {
         }
 
         logger.info("Signature verified successfully. Processing payload...");
+
+    }
+
+    @Override
+    public String saveRepo(String projectName, String repoUrl) {
+        redisCacheService.cacheRepoUrl(projectName, repoUrl);
+        return "Saved " + projectName + " : " + repoUrl;
     }
 
     private boolean isValidSignature(String payload, String signature) {
