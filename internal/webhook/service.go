@@ -5,22 +5,51 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/config"
+	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/worker"
+)
+
+var (
+	ErrInvalidSignature = errors.New("invalid signature")
+	ErrIgnoredEvent     = errors.New("event ignored")
+	ErrQueueFull        = errors.New("worker queue full")
 )
 
 type Service struct {
-	cfg *config.Config
+	cfg        *config.Config
+	workerPool *worker.Pool
 }
 
-func NewService(cfg *config.Config) *Service {
-	return &Service{cfg: cfg}
+func NewService(cfg *config.Config, workerPool *worker.Pool) *Service {
+	return &Service{
+		cfg:        cfg,
+		workerPool: workerPool,
+	}
 }
 
-func (s *Service) VerifySignature(signatureHeader string, rawBody []byte) bool {
+func (s *Service) ProcessWebhook(signatureHeader, eventType string, rawBody []byte) error {
+	if !s.verifySignature(signatureHeader, rawBody) {
+		return ErrInvalidSignature
+	}
+
+	event, err := s.parseEvent(eventType, rawBody)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrIgnoredEvent, err)
+	}
+
+	enqueued := s.workerPool.Enqueue(worker.Job{Event: event})
+	if !enqueued {
+		return ErrQueueFull
+	}
+
+	return nil
+}
+
+func (s *Service) verifySignature(signatureHeader string, rawBody []byte) bool {
 	if signatureHeader == "" || !strings.HasPrefix(signatureHeader, "sha256=") {
 		return false
 	}
@@ -35,29 +64,19 @@ func (s *Service) VerifySignature(signatureHeader string, rawBody []byte) bool {
 	return hmac.Equal(gotMac, expectedMac.Sum(nil))
 }
 
-func (s *Service) ParseEvent(eventType string, rawBody []byte) (*PullRequestEvent, error) {
+func (s *Service) parseEvent(eventType string, rawBody []byte) (*PullRequestEvent, error) {
 	if eventType != "pull_request" {
-		slog.Info("Ignoring non-PR webhook event", "event_type", eventType)
 		return nil, fmt.Errorf("unsupported event type: %s", eventType)
 	}
 
 	var event PullRequestEvent
 	if err := json.Unmarshal(rawBody, &event); err != nil {
-		slog.Error("Failed to unmarshal pull_request payload", "error", err)
 		return nil, fmt.Errorf("failed to decode JSON payload: %w", err)
 	}
 
 	if event.Action != "opened" && event.Action != "synchronize" {
-		slog.Info("Ignoring pull request action", "action", event.Action, "pr_number", event.Number)
 		return nil, fmt.Errorf("unsupported pull request action: %s", event.Action)
 	}
-
-	slog.Info("Successfully parsed pull_request event",
-		"action", event.Action,
-		"pr_number", event.Number,
-		"repo", event.Repository.Name,
-		"owner", event.Repository.Owner.Login,
-	)
 
 	return &event, nil
 }

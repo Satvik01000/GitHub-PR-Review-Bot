@@ -9,6 +9,7 @@ import (
 type Config struct {
 	Server ServerConfig `toml:"server"`
 	GitHub GitHubConfig `toml:"github"`
+	Worker WorkerConfig `toml:"worker"`
 }
 
 type ServerConfig struct {
@@ -19,6 +20,11 @@ type ServerConfig struct {
 type GitHubConfig struct {
 	AppID          int64  `toml:"app_id"`
 	PrivateKeyPath string `toml:"private_key_path"`
+}
+
+type WorkerConfig struct {
+	MaxWorkers int `toml:"max_workers"`
+	QueueSize  int `toml:"queue_size"`
 }
 
 func LoadConfig() (*Config, error) {

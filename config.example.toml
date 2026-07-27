@@ -5,3 +5,7 @@ webhook_secret = "dev_secret_123"
 [github]
 app_id = 0
 private_key_path = "private-key.pem"
+
+[worker]
+max_workers = 5
+queue_size = 100
