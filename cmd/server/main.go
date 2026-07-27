@@ -12,10 +12,11 @@ import (
 
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/config"
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/server"
+	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/worker"
 )
 
 func main() {
-	// Initialize default structured logger outputting JSON or Text to stdout
+	// Initialize default structured logger outputting text to stdout
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -26,18 +27,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 2. Initialize router & server
-	srv := server.NewServer(cfg)
+	// 2. Create a context that listens for OS interrupt signals (Ctrl+C, SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// 3. Initialize and start the Worker Pool using config values
+	workerPool := worker.NewPool(cfg.Worker.MaxWorkers, cfg.Worker.QueueSize)
+	workerPool.Start(ctx)
+
+	// 4. Initialize router & server with workerPool dependency injection
+	srv := server.NewServer(cfg, workerPool)
 	httpServer := &http.Server{
 		Addr:    cfg.Server.Port,
 		Handler: srv.RegisterRoutes(),
 	}
 
-	// 3. Create a context that listens for interrupt signals (Ctrl+C, SIGTERM)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	// 4. Start HTTP server in a background goroutine
+	// 5. Start HTTP server in a background goroutine
 	go func() {
 		slog.Info("Server starting", "port", cfg.Server.Port)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -46,15 +51,18 @@ func main() {
 		}
 	}()
 
-	// 5. Block main thread here until an OS signal arrives
+	// 6. Block main thread here until an OS signal arrives
 	<-ctx.Done()
 	slog.Info("Shutdown signal received. Starting graceful shutdown...")
 
-	// 6. Create a 10-second deadline for active connections to drain/finish
+	// 7. Stop accepting new jobs and wait for workers to finish active jobs
+	workerPool.Stop()
+
+	// 8. Create a 10-second deadline for active HTTP connections to drain
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// 7. Stop accepting new requests and wait for existing ones to complete
+	// 9. Shutdown HTTP server cleanly
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		slog.Error("Server forced to shutdown", "error", err)
 		os.Exit(1)

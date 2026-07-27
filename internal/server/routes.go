@@ -1,12 +1,14 @@
 package server
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/config"
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/webhook"
+	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/worker"
 )
 
 type Server struct {
@@ -14,10 +16,10 @@ type Server struct {
 	webhookService *webhook.Service
 }
 
-func NewServer(cfg *config.Config) *Server {
+func NewServer(cfg *config.Config, workerPool *worker.Pool) *Server {
 	return &Server{
 		cfg:            cfg,
-		webhookService: webhook.NewService(cfg), // Fixed: Initialize webhookService here
+		webhookService: webhook.NewService(cfg, workerPool),
 	}
 }
 
@@ -42,26 +44,29 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	signatureHeader := r.Header.Get("X-Hub-Signature-256")
-
-	if !s.webhookService.VerifySignature(signatureHeader, rawBody) {
-		slog.Error("Failed to verify webhook signature", "signature", signatureHeader)
-		http.Error(w, "Unauthorized: Invalid Signature", http.StatusUnauthorized)
-		return
-	}
-
+	signature := r.Header.Get("X-Hub-Signature-256")
 	eventType := r.Header.Get("X-GitHub-Event")
-	event, err := s.webhookService.ParseEvent(eventType, rawBody)
+
+	err = s.webhookService.ProcessWebhook(signature, eventType, rawBody)
 	if err != nil {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Event ignored"))
+		switch {
+		case errors.Is(err, webhook.ErrInvalidSignature):
+			slog.Error("Webhook signature validation failed")
+			http.Error(w, "Unauthorized: Invalid Signature", http.StatusUnauthorized)
+		case errors.Is(err, webhook.ErrIgnoredEvent):
+			slog.Info("Webhook event ignored", "reason", err)
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("Event ignored"))
+		case errors.Is(err, webhook.ErrQueueFull):
+			slog.Error("Worker queue full, rejecting request")
+			http.Error(w, "Server Busy: Worker queue full", http.StatusServiceUnavailable)
+		default:
+			slog.Error("Unexpected webhook processing error", "error", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
 		return
 	}
-
-	slog.Info("Processing PR review request", "pr_number", event.Number, "repo", event.Repository.Name)
 
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte("Webhook received and queued")); err != nil {
-		slog.Error("Failed to write response body", "error", err)
-	}
+	w.Write([]byte("Webhook received and queued"))
 }
