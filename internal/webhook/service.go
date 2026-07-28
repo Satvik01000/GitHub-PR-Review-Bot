@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/config"
+	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/domain"
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/worker"
 )
 
@@ -64,12 +65,12 @@ func (s *Service) verifySignature(signatureHeader string, rawBody []byte) bool {
 	return hmac.Equal(gotMac, expectedMac.Sum(nil))
 }
 
-func (s *Service) parseEvent(eventType string, rawBody []byte) (*PullRequestEvent, error) {
+func (s *Service) parseEvent(eventType string, rawBody []byte) (*domain.PullRequestEvent, error) {
 	if eventType != "pull_request" {
 		return nil, fmt.Errorf("unsupported event type: %s", eventType)
 	}
 
-	var event PullRequestEvent
+	var event domain.PullRequestEvent
 	if err := json.Unmarshal(rawBody, &event); err != nil {
 		return nil, fmt.Errorf("failed to decode JSON payload: %w", err)
 	}

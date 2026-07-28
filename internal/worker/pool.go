@@ -4,18 +4,22 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+
+	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/github"
 )
 
 type Pool struct {
-	jobQueue   chan Job
-	maxWorkers int
-	wg         sync.WaitGroup
+	jobQueue     chan Job
+	maxWorkers   int
+	wg           sync.WaitGroup
+	githubClient *github.Client
 }
 
-func NewPool(maxWorkers, queueSize int) *Pool {
+func NewPool(maxWorkers, queueSize int, githubClient *github.Client) *Pool {
 	return &Pool{
-		jobQueue:   make(chan Job, queueSize),
-		maxWorkers: maxWorkers,
+		jobQueue:     make(chan Job, queueSize),
+		maxWorkers:   maxWorkers,
+		githubClient: githubClient,
 	}
 }
 
@@ -73,6 +77,30 @@ func (p *Pool) processJob(workerId int, job Job) {
 		"owner", job.Event.Repository.Owner.Login,
 	)
 
+	ctx := context.Background()
+
+	token, err := p.githubClient.GetInstallationToken(ctx, job.Event.Installation.ID)
+	if err != nil {
+		slog.Error("Failed to fetch installation token", "error", err, "pr_number", job.Event.Number)
+		return
+	}
+
+	diff, err := p.githubClient.GetPullRequestDiff(ctx,
+		token,
+		job.Event.Repository.Owner.Login,
+		job.Event.Repository.Name,
+		job.Event.Number,
+	)
+
+	if err != nil {
+		slog.Error("Failed to fetch PR diff", "error", err, "pr_number", job.Event.Number)
+		return
+	}
+
+	slog.Info("Successfully retrieved PR diff",
+		"pr_number", job.Event.Number,
+		"diff_size_bytes", len(diff),
+	)
 	//TODO
-	// Step 5 (GitHub API diff fetch) & Step 6 (Agentic Engine execution) will live here!
+	// Step 6 (Agentic Engine execution) will live here!
 }
