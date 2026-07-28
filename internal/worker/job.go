@@ -1,7 +1,9 @@
 package worker
 
-import "github.com/Satvik01000/GitHub-PR-Review-Bot/internal/webhook"
+import (
+	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/domain"
+)
 
 type Job struct {
-	Event *webhook.PullRequestEvent
+	Event *domain.PullRequestEvent
 }
