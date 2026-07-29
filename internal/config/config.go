@@ -10,6 +10,7 @@ type Config struct {
 	Server ServerConfig `toml:"server"`
 	GitHub GitHubConfig `toml:"github"`
 	Worker WorkerConfig `toml:"worker"`
+	AI     AIConfig     `toml:"ai"`
 }
 
 type ServerConfig struct {
@@ -25,6 +26,14 @@ type GitHubConfig struct {
 type WorkerConfig struct {
 	MaxWorkers int `toml:"max_workers"`
 	QueueSize  int `toml:"queue_size"`
+}
+
+type AIConfig struct {
+	Provider       string `toml:"provider"`
+	APIKey         string `toml:"api_key"`
+	BaseURL        string `toml:"base_url"`
+	Model          string `toml:"model"`
+	TimeoutSeconds int    `toml:"timeout_seconds"`
 }
 
 func LoadConfig() (*Config, error) {

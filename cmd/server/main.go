@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/ai"
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/config"
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/github"
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/server"
@@ -17,7 +18,6 @@ import (
 )
 
 func main() {
-	// Initialize default structured logger outputting text to stdout
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -36,22 +36,25 @@ func main() {
 	}
 	githubClient := github.NewClient(auth)
 
-	// 3. Create context listening for OS signals (SIGINT, SIGTERM)
+	// 3. Initialize AI Client
+	aiClient := ai.NewClient(cfg.AI)
+
+	// 4. Create context listening for OS signals (SIGINT, SIGTERM)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// 4. Initialize and start worker pool with githubClient dependency
-	workerPool := worker.NewPool(cfg.Worker.MaxWorkers, cfg.Worker.QueueSize, githubClient)
+	// 5. Initialize and start worker pool
+	workerPool := worker.NewPool(cfg.Worker.MaxWorkers, cfg.Worker.QueueSize, githubClient, aiClient)
 	workerPool.Start(ctx)
 
-	// 5. Initialize server and routes
+	// 6. Initialize server and routes
 	srv := server.NewServer(cfg, workerPool)
 	httpServer := &http.Server{
 		Addr:    cfg.Server.Port,
 		Handler: srv.RegisterRoutes(),
 	}
 
-	// 6. Start HTTP server
+	// 7. Start HTTP server
 	go func() {
 		slog.Info("Server starting", "port", cfg.Server.Port)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -60,7 +63,7 @@ func main() {
 		}
 	}()
 
-	// 7. Wait for shutdown signal
+	// 8. Wait for shutdown signal
 	<-ctx.Done()
 	slog.Info("Shutdown signal received. Starting graceful shutdown...")
 
