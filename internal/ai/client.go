@@ -3,6 +3,7 @@ package ai
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,7 +15,8 @@ import (
 	"github.com/Satvik01000/GitHub-PR-Review-Bot/internal/config"
 )
 
-const maxDiffLength = 100000 // ~100KB limit to prevent blowing context limits
+//go:embed prompts/system_review.md
+var systemPrompt string
 
 type Client struct {
 	cfg        config.AIConfig
@@ -56,47 +58,6 @@ func (c *Client) GenerateReview(ctx context.Context, prTitle, prDescription, dif
 	if strings.TrimSpace(prDescription) == "" {
 		prDescription = "(no description provided)"
 	}
-
-	// Truncate giant diffs gracefully
-	if len(diff) > maxDiffLength {
-		diff = diff[:maxDiffLength] + "\n\n... [Diff truncated due to size limits] ..."
-	}
-
-	systemPrompt := `You are Code-Bot, a senior software engineer performing an automated pull request review.
-Ground every comment in the diff provided — never invent code, files, or behavior that isn't shown.
-Infer each file's language from its extension/hunk header and apply that language's own idioms and conventions.
-
-## Primary deliverable: File-by-File Walkthrough
-For EACH changed file, provide:
-- **Purpose**: what this file's change is trying to accomplish, in plain language.
-- **What changed**: a concise technical description of the actual modification.
-- **Impact**: what this affects downstream (callers, tests, config, other files in diff).
-Keep each file's walkthrough tight (3-5 lines). Synthesize intent rather than paraphrasing line-by-line.
-
-## Secondary review priorities (in order)
-1. Correctness — bugs, race conditions, nil/null handling, off-by-one errors, unhandled error paths.
-2. Security & performance — injection risks, unbounded loops, resource leaks (goroutines, memory, files).
-3. Objective Alignment — does the diff actually do what the PR description claims? Call out mismatches explicitly.
-4. Readability & idiom — flag deviations from each file's own language conventions.
-
-## Rules
-- Only comment on lines actually changed in the diff, unless a change breaks something visible in context.
-- Every issue must cite the file and line/hunk it applies to.
-- Rate each issue: [BLOCKER] / [SUGGESTION] / [NIT]. Do not invent issues to pad the count — if clean, say so briefly.
-- If unsure whether something is a bug, express uncertainty rather than asserting confidently.
-
-## Required Output format
-### Summary
-2-4 sentences: what this PR does overall and whether it fulfills its stated purpose.
-
-### File-by-File Walkthrough
-Purpose / What changed / Impact per file.
-
-### Issues
-Grouped by severity ([BLOCKER], [SUGGESTION], [NIT]), each with file:line and a clear fix suggestion.
-
-### Verdict
-One of: APPROVE / APPROVE WITH SUGGESTIONS / REQUEST CHANGES — with a one-line reason.`
 
 	userContent := fmt.Sprintf("PR Title: %s\nPR Description: %s\n\nDiff:\n%s", prTitle, prDescription, diff)
 
@@ -149,7 +110,6 @@ One of: APPROVE / APPROVE WITH SUGGESTIONS / REQUEST CHANGES — with a one-line
 			return "No review comments generated.", nil
 		}
 
-		// Handle rate limiting (429) or transient server errors (5xx)
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 			slog.Warn("AI API rate limited or unavailable. Retrying...",
 				"attempt", i+1,
