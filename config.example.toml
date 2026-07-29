@@ -1,11 +1,18 @@
 [server]
 port = ":8080"
-webhook_secret = "dev_secret_123"
+webhook_secret = "your_webhook_secret_here"
 
 [github]
-app_id = 0
+app_id = 123456
 private_key_path = "private-key.pem"
 
 [worker]
 max_workers = 5
 queue_size = 100
+
+[ai]
+provider = "gemini"
+api_key = "your_ai_api_key_here"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+model = "gemini-3.6-flash"
+timeout_seconds = 30
