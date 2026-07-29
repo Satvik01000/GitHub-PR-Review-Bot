@@ -75,9 +75,10 @@ func (s *Service) parseEvent(eventType string, rawBody []byte) (*domain.PullRequ
 		return nil, fmt.Errorf("failed to decode JSON payload: %w", err)
 	}
 
-	if event.Action != "opened" && event.Action != "synchronize" {
+	switch event.Action {
+	case "opened", "reopened", "synchronize":
+		return &event, nil
+	default:
 		return nil, fmt.Errorf("unsupported pull request action: %s", event.Action)
 	}
-
-	return &event, nil
 }
