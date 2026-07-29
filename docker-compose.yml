@@ -1,0 +1,12 @@
+services:
+  pr-review-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: github-pr-review-bot
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+      - ./code-bot-go.2026-07-27.private-key.pem:/app/code-bot-go.2026-07-27.private-key.pem:ro
+    restart: unless-stopped
